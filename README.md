@@ -23,7 +23,7 @@ installed on the user's device. The binary AXML patcher handles both existing
 
 The application ID is `xyz.elouan.sobosubamodloader`. Open the project in
 Android Studio and run the `app` configuration. The project
-uses Kotlin, Jetpack Compose Material 3, Shizuku API 13.1.5, and Android SDK
+uses Kotlin, Jetpack Compose Material 3, Shizuku API 12.2.0, and Android SDK
 35.
 
 ## Automated APK builds

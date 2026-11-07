@@ -42,6 +42,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -57,6 +58,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import xyz.elouan.sobosubamodloader.ui.theme.SobosubaModLoaderTheme
 import kotlinx.coroutines.launch
+import rikka.shizuku.Shizuku
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -81,6 +83,25 @@ private fun SobosubaModLoaderApp() {
     val scope = rememberCoroutineScope()
     val zipPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) model.installMod(uri) { message -> scope.launch { snackbar.showSnackbar(message) } }
+    }
+
+    DisposableEffect(Unit) {
+        val permissionListener = Shizuku.OnRequestPermissionResultListener { requestCode, grantResult ->
+            if (requestCode == LoaderRepository.SHIZUKU_PERMISSION_REQUEST_CODE) {
+                model.refresh()
+                scope.launch {
+                    snackbar.showSnackbar(
+                        if (grantResult == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                            "Shizuku permission granted"
+                        } else {
+                            "Shizuku permission denied"
+                        }
+                    )
+                }
+            }
+        }
+        Shizuku.addRequestPermissionResultListener(permissionListener)
+        onDispose { Shizuku.removeRequestPermissionResultListener(permissionListener) }
     }
 
     LaunchedEffect(Unit) { model.refresh() }
@@ -147,7 +168,11 @@ private fun HomeScreen(model: LoaderViewModel, padding: PaddingValues, snackbar:
                     )
                     if (model.gameVersion != null) Text("Version ${model.gameVersion}")
                     if (!model.shizukuConnected) {
-                        Button(onClick = model::requestShizukuPermission) {
+                        Button(onClick = {
+                            model.requestShizukuPermission { message ->
+                                scope.launch { snackbar.showSnackbar(message) }
+                            }
+                        }) {
                             Text("Connect to Shizuku")
                         }
                     } else {
@@ -278,8 +303,8 @@ class LoaderViewModel(application: Application) : ViewModel() {
         loading = false
     }
 
-    fun requestShizukuPermission() {
-        repository.requestShizukuPermission()
+    fun requestShizukuPermission(callback: (String) -> Unit) {
+        callback(repository.requestShizukuPermission())
         refresh()
     }
 

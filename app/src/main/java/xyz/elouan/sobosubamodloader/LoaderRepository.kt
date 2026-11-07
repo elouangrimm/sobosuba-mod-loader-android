@@ -23,16 +23,25 @@ data class InstalledMod(
 )
 
 class LoaderRepository(val context: Context) {
+    companion object {
+        const val SHIZUKU_PERMISSION_REQUEST_CODE = 100
+    }
+
     private val scope = CoroutineScope(Dispatchers.IO)
     private val packages = listOf("com.keepeetron.sobosuba", "com.keepeetron.sobosuba.beta")
 
     fun isShizukuReady(): Boolean =
         Shizuku.pingBinder() && Shizuku.checkSelfPermission() == android.content.pm.PackageManager.PERMISSION_GRANTED
 
-    fun requestShizukuPermission() {
-        if (Shizuku.pingBinder() && Shizuku.checkSelfPermission() != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            Shizuku.requestPermission(100)
+    fun requestShizukuPermission(): String {
+        if (!Shizuku.pingBinder()) {
+            return "Shizuku service is unavailable. Open Shizuku and start its service first."
         }
+        if (Shizuku.checkSelfPermission() == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            return "Shizuku permission is already granted."
+        }
+        Shizuku.requestPermission(SHIZUKU_PERMISSION_REQUEST_CODE)
+        return "Shizuku permission request sent."
     }
 
     fun detectGame(): GameInfo? {

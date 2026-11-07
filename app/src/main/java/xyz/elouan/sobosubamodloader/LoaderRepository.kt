@@ -147,10 +147,12 @@ class LoaderRepository(val context: Context) {
     private fun runShell(command: String): String {
         check(isShizukuReady()) { "Shizuku is not connected or permission was denied" }
         val process = Shizuku.newProcess(arrayOf("sh", "-c", command), null, null)
-        return process.use {
-            val output = it.inputStream.bufferedReader().readText()
-            val error = it.errorStream.bufferedReader().readText()
+        return try {
+            val output = process.inputStream.bufferedReader().readText()
+            val error = process.errorStream.bufferedReader().readText()
             if (error.isNotBlank()) "$output\n$error".trim() else output.trim()
+        } finally {
+            process.destroy()
         }
     }
 

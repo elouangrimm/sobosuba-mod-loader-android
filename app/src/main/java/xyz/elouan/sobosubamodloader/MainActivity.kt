@@ -262,7 +262,7 @@ private fun SettingsScreen(model: LoaderViewModel, padding: PaddingValues) {
             }
             Switch(
                 checked = model.separateInstall,
-                onCheckedChange = model::setSeparateInstall
+                onCheckedChange = model::updateSeparateInstall
             )
         }
         Text(
@@ -321,7 +321,7 @@ class LoaderViewModel(application: Application) : ViewModel() {
         refresh()
     }
 
-    fun setSeparateInstall(enabled: Boolean) {
+    fun updateSeparateInstall(enabled: Boolean) {
         repository.setSeparateInstallEnabled(enabled)
         separateInstall = enabled
         refresh()

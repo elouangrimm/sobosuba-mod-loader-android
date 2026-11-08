@@ -19,6 +19,11 @@ The loader never distributes game files. It reads and patches the APK already
 installed on the user's device. The binary AXML patcher handles both existing
 `debuggable` attributes and release manifests where the attribute is absent.
 
+For devices where replacing the official installation is undesirable, enable
+**Install separate modded copy** in Settings before patching. The loader then
+installs the patched game as `xyz.elouan.sobosuba.debug`, labeled
+**Sobosuba (Modded)**, leaving the official package installed.
+
 ## Build
 
 The application ID is `xyz.elouan.sobosubamodloader`. Open the project in

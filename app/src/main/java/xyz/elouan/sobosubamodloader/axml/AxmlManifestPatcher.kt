@@ -12,14 +12,20 @@ object AxmlManifestPatcher {
     private const val START_TAG = 0x0102
     private const val UTF8_FLAG = 0x00000100
     private const val TYPE_BOOLEAN = 0x12
+    private const val TYPE_STRING = 0x03
 
-    fun patchApk(input: File, output: File) {
+    data class Options(
+        val packageName: String? = null,
+        val appLabel: String? = null
+    )
+
+    fun patchApk(input: File, output: File, options: Options = Options()) {
         ZipFile(input).use { source ->
             ZipOutputStream(output.outputStream()).use { destination ->
                 source.entries().asSequence().forEach { entry ->
                     val copy = destination.putNextEntry(java.util.zip.ZipEntry(entry.name))
                     if (entry.name == "AndroidManifest.xml") {
-                        destination.write(patchManifest(source.getInputStream(entry).readBytes()))
+                        destination.write(patchManifest(source.getInputStream(entry).readBytes(), options))
                     } else {
                         source.getInputStream(entry).use { it.copyTo(destination) }
                     }
@@ -29,20 +35,35 @@ object AxmlManifestPatcher {
         }
     }
 
-    private fun patchManifest(input: ByteArray): ByteArray {
-        val bytes = input.copyOf()
+    private fun patchManifest(input: ByteArray, options: Options): ByteArray {
+        var bytes = input.copyOf()
         val poolOffset = 8
         require(u16(bytes, poolOffset) == STRING_POOL) { "AndroidManifest.xml is not binary XML" }
-        val strings = readStrings(bytes, poolOffset)
+        if (options.packageName != null && !readStrings(bytes, poolOffset).contains(options.packageName)) {
+            bytes = addString(bytes, poolOffset, options.packageName)
+        }
+        if (options.appLabel != null && !readStrings(bytes, poolOffset).contains(options.appLabel)) {
+            bytes = addString(bytes, poolOffset, options.appLabel)
+        }
+
         var working = bytes
-        var debuggableIndex = strings.indexOf("debuggable")
+        if (!readStrings(working, poolOffset).contains("debuggable")) {
+            working = addString(working, poolOffset, "debuggable")
+        }
+        if (options.appLabel != null && !readStrings(working, poolOffset).contains("label")) {
+            working = addString(working, poolOffset, "label")
+        }
+        val strings = readStrings(working, poolOffset)
+        val debuggableIndex = ensureStringIndex(working, "debuggable")
         val applicationIndex = strings.indexOf("application")
+        val manifestIndex = strings.indexOf("manifest")
+        val packageAttributeIndex = strings.indexOf("package")
+        val labelAttributeIndex = strings.indexOf("label")
         require(applicationIndex >= 0) { "Manifest has no application element" }
         val androidNamespaceIndex = strings.indexOf("http://schemas.android.com/apk/res/android")
         require(androidNamespaceIndex >= 0) { "Manifest has no Android namespace" }
-        if (debuggableIndex < 0) {
-            working = addString(working, poolOffset, "debuggable")
-            debuggableIndex = readStrings(working, poolOffset).indexOf("debuggable")
+        if (options.packageName != null) {
+            require(manifestIndex >= 0 && packageAttributeIndex >= 0) { "Manifest has no package attribute" }
         }
 
         var offset = chunkEnd(working, poolOffset)
@@ -51,16 +72,37 @@ object AxmlManifestPatcher {
                 START_TAG -> {
                     val nameIndex = i32(working, offset + 20)
                     val attributeCount = u16(working, offset + 28)
+                    if (nameIndex == manifestIndex && options.packageName != null) {
+                        val attribute = findAttribute(working, offset, attributeCount, packageAttributeIndex)
+                        require(attribute >= 0) { "Manifest has no package attribute" }
+                        patchStringAttribute(working, attribute, strings.indexOf(options.packageName))
+                    }
                     if (nameIndex == applicationIndex) {
                         for (index in 0 until attributeCount) {
                             val attribute = offset + 36 + index * 20
                             if (i32(working, attribute + 4) == debuggableIndex) {
                                 putI32(working, attribute + 16, -1)
                                 putI32(working, attribute + 12, 0)
-                                return working
+                                break
                             }
                         }
-                        return addAttribute(working, offset, attributeCount, androidNamespaceIndex, debuggableIndex)
+                        var result = working
+                        var resultCount = attributeCount
+                        if (findAttribute(result, offset, resultCount, debuggableIndex) < 0) {
+                            result = addAttribute(result, offset, resultCount, androidNamespaceIndex, debuggableIndex, -1, TYPE_BOOLEAN)
+                            resultCount++
+                        }
+                        if (options.appLabel != null) {
+                            val labelIndex = strings.indexOf(options.appLabel)
+                            val labelAttribute = findAttribute(result, offset, resultCount, labelAttributeIndex)
+                            result = if (labelAttribute >= 0) {
+                                patchStringAttribute(result, labelAttribute, labelIndex)
+                                result
+                            } else {
+                                addAttribute(result, offset, resultCount, androidNamespaceIndex, labelAttributeIndex, labelIndex, TYPE_STRING)
+                            }
+                        }
+                        return result
                     }
                 }
             }
@@ -71,22 +113,44 @@ object AxmlManifestPatcher {
         error("Application element not found")
     }
 
+    private fun ensureStringIndex(bytes: ByteArray, value: String): Int {
+        val index = readStrings(bytes, 8).indexOf(value)
+        return if (index >= 0) index else error("Unable to add string: $value")
+    }
+
+    private fun findAttribute(bytes: ByteArray, startTagOffset: Int, count: Int, nameIndex: Int): Int {
+        for (index in 0 until count) {
+            val attribute = startTagOffset + 36 + index * 20
+            if (i32(bytes, attribute + 4) == nameIndex) return attribute
+        }
+        return -1
+    }
+
+    private fun patchStringAttribute(bytes: ByteArray, attribute: Int, valueIndex: Int) {
+        putI32(bytes, attribute + 8, valueIndex)
+        putI32(bytes, attribute + 12, 0)
+        bytes[attribute + 15] = TYPE_STRING.toByte()
+        putI32(bytes, attribute + 16, valueIndex)
+    }
+
     private fun addAttribute(
         input: ByteArray,
         startTagOffset: Int,
         attributeCount: Int,
         namespaceIndex: Int,
-        nameIndex: Int
+        nameIndex: Int,
+        valueIndex: Int,
+        type: Int
     ): ByteArray {
         val attribute = ByteArray(20)
         putI32(attribute, 0, namespaceIndex)
         putI32(attribute, 4, nameIndex)
-        putI32(attribute, 8, -1)
+        putI32(attribute, 8, valueIndex)
         attribute[12] = 8
         attribute[13] = 0
         attribute[14] = 0
-        attribute[15] = TYPE_BOOLEAN.toByte()
-        putI32(attribute, 16, -1)
+        attribute[15] = type.toByte()
+        putI32(attribute, 16, if (type == TYPE_BOOLEAN) -1 else valueIndex)
 
         val insertion = startTagOffset + 36 + attributeCount * 20
         val result = ByteArray(input.size + attribute.size)

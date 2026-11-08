@@ -39,6 +39,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.LaunchedEffect
@@ -254,6 +255,16 @@ private fun SettingsScreen(model: LoaderViewModel, padding: PaddingValues) {
         Text("Shizuku: ${if (model.shizukuConnected) "Connected" else "Disconnected"}")
         Text("Detected package: ${model.gamePackage ?: "Not installed"}")
         Text("Patch status: ${if (model.isDebuggable) "Debuggable" else "Not patched"}")
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Install separate modded copy", fontWeight = FontWeight.Bold)
+                Text("Use ${LoaderRepository.DEBUG_PACKAGE} instead of replacing Sobosuba.")
+            }
+            Switch(
+                checked = model.separateInstall,
+                onCheckedChange = model::setSeparateInstall
+            )
+        }
         Text(
             "This app patches your installed APK and copies mod files into the game's private user data using Shizuku."
         )
@@ -290,6 +301,8 @@ class LoaderViewModel(application: Application) : ViewModel() {
         private set
     var loading by mutableStateOf(false)
         private set
+    var separateInstall by mutableStateOf(repository.separateInstallEnabled())
+        private set
 
     fun refresh() {
         loading = true
@@ -305,6 +318,12 @@ class LoaderViewModel(application: Application) : ViewModel() {
 
     fun requestShizukuPermission(callback: (String) -> Unit) {
         callback(repository.requestShizukuPermission())
+        refresh()
+    }
+
+    fun setSeparateInstall(enabled: Boolean) {
+        repository.setSeparateInstallEnabled(enabled)
+        separateInstall = enabled
         refresh()
     }
 

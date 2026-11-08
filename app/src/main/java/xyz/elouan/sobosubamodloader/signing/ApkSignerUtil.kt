@@ -1,51 +1,33 @@
 package xyz.elouan.sobosubamodloader.signing
 
 import android.content.Context
-import android.security.keystore.KeyGenParameterSpec
-import android.security.keystore.KeyProperties
 import com.android.apksig.ApkSigner
 import java.io.File
-import java.security.KeyPairGenerator
 import java.security.KeyStore
 import java.security.PrivateKey
 import java.security.cert.X509Certificate
 
 object ApkSignerUtil {
-    private const val KEYSTORE = "AndroidKeyStore"
-    private const val ALIAS = "sobosuba-mod-loader"
+    private const val KEYSTORE_ASSET = "modloader.jks"
+    private const val KEYSTORE_PASSWORD = "sobosuba123"
+    private const val ALIAS = "modloader"
 
     fun sign(context: Context, input: File, output: File) {
-        val keyStore = KeyStore.getInstance(KEYSTORE).apply { load(null) }
-        if (!keyStore.containsAlias(ALIAS)) {
-            val generator = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_RSA, KEYSTORE)
-            generator.initialize(
-                KeyGenParameterSpec.Builder(
-                    ALIAS,
-                    KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY
-                )
-                    .setKeySize(2048)
-                    .setDigests(KeyProperties.DIGEST_SHA256, KeyProperties.DIGEST_SHA512)
-                    .setSignaturePaddings(KeyProperties.SIGNATURE_PADDING_RSA_PKCS1)
-                    .setCertificateSubject(javax.security.auth.x500.X500Principal("CN=Sobosuba Mod Loader"))
-                    .setCertificateSerialNumber(java.math.BigInteger.ONE)
-                    .setCertificateNotBefore(java.util.Date(System.currentTimeMillis() - 86_400_000))
-                    .setCertificateNotAfter(java.util.Date(System.currentTimeMillis() + 31_536_000_000L * 20))
-                    .build()
-            )
-            generator.generateKeyPair()
+        val keyStore = KeyStore.getInstance("PKCS12")
+        context.assets.open(KEYSTORE_ASSET).use { stream ->
+            keyStore.load(stream, KEYSTORE_PASSWORD.toCharArray())
         }
 
-        val privateKey = keyStore.getKey(ALIAS, null) as? PrivateKey
-            ?: error("Unable to load signing key")
-        val certificate = keyStore.getCertificate(ALIAS) as? X509Certificate
-            ?: error("Unable to load signing certificate")
-        val signer = ApkSigner.SignerConfig.Builder(
-            "sobosuba-mod-loader",
+        val privateKey = keyStore.getKey(ALIAS, KEYSTORE_PASSWORD.toCharArray()) as PrivateKey
+        val certificate = keyStore.getCertificate(ALIAS) as X509Certificate
+
+        val signerConfig = ApkSigner.SignerConfig.Builder(
+            ALIAS,
             privateKey,
             listOf(certificate)
         ).build()
 
-        ApkSigner.Builder(listOf(signer))
+        ApkSigner.Builder(listOf(signerConfig))
             .setInputApk(input)
             .setOutputApk(output)
             .setV1SigningEnabled(true)

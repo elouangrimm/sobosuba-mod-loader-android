@@ -23,7 +23,10 @@ object AxmlManifestPatcher {
         ZipFile(input).use { source ->
             ZipOutputStream(output.outputStream()).use { destination ->
                 source.entries().asSequence().forEach { entry ->
-                    val copy = destination.putNextEntry(java.util.zip.ZipEntry(entry.name))
+                    // Skip existing signature files — ApkSigner will create fresh ones
+                    if (entry.name.startsWith("META-INF/")) return@forEach
+
+                    destination.putNextEntry(java.util.zip.ZipEntry(entry.name))
                     if (entry.name == "AndroidManifest.xml") {
                         destination.write(patchManifest(source.getInputStream(entry).readBytes(), options))
                     } else {

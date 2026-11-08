@@ -111,22 +111,22 @@ class LoaderRepository(val context: Context) {
             } catch (e: Exception) {
                 callback("Patch failed: ${e.message ?: "unknown error"}")
             }
-
-            private fun detectSourceGame(): GameInfo? =
-                packages.drop(1).firstNotNullOfOrNull { name ->
-                    try {
-                        val info = context.packageManager.getPackageInfo(name, 0)
-                        val apk = runShell("pm path $name").lineSequence()
-                            .firstOrNull { it.startsWith("package:") }
-                            ?.removePrefix("package:")
-                            ?: return@firstNotNullOfOrNull null
-                        GameInfo(name, info.versionName ?: "unknown", apk)
-                    } catch (_: Exception) {
-                        null
-                    }
-                }
         }
     }
+
+    private fun detectSourceGame(): GameInfo? =
+        packages.drop(1).firstNotNullOfOrNull { name ->
+            try {
+                val info = context.packageManager.getPackageInfo(name, 0)
+                val apk = runShell("pm path $name").lineSequence()
+                    .firstOrNull { it.startsWith("package:") }
+                    ?.removePrefix("package:")
+                    ?: return@firstNotNullOfOrNull null
+                GameInfo(name, info.versionName ?: "unknown", apk)
+            } catch (_: Exception) {
+                null
+            }
+        }
 
     fun installMod(packageName: String, uri: Uri, callback: (String) -> Unit) {
         scope.launch {

@@ -23,15 +23,44 @@ object AxmlManifestPatcher {
         ZipFile(input).use { source ->
             ZipOutputStream(output.outputStream()).use { destination ->
                 source.entries().asSequence().forEach { entry ->
-                    // Skip existing signature files — ApkSigner will create fresh ones
+                    // Skip existing signature files
                     if (entry.name.startsWith("META-INF/")) return@forEach
 
-                    destination.putNextEntry(java.util.zip.ZipEntry(entry.name))
-                    if (entry.name == "AndroidManifest.xml") {
-                        destination.write(patchManifest(source.getInputStream(entry).readBytes(), options))
+                    // Read entry data
+                    val originalData = source.getInputStream(entry).use { it.readBytes() }
+                    val entryData = if (entry.name == "AndroidManifest.xml") {
+                        patchManifest(originalData, options)
                     } else {
-                        source.getInputStream(entry).use { it.copyTo(destination) }
+                        originalData
                     }
+
+                    val newEntry = ZipEntry(entry.name)
+
+                    // CRITICAL: Preserve original compression method
+                    // resources.arsc and .so files must be STORED (uncompressed) for Android 11+
+                    newEntry.method = entry.method
+
+                    if (entry.method == ZipEntry.STORED) {
+                        // For STORED entries, we must set size, CRC, and compressedSize manually
+                        val crc = java.util.zip.CRC32()
+                        crc.update(entryData)
+                        newEntry.crc = crc.value
+                        newEntry.size = entryData.size.toLong()
+                        newEntry.compressedSize = entryData.size.toLong()
+
+                        // CRITICAL: Align to 4-byte boundary (required by Android 11+)
+                        // The data offset = 30 (local header) + name_length + extra_length
+                        // We add padding bytes via the extra field to align to 4
+                        val nameBytes = entry.name.toByteArray(Charsets.UTF_8)
+                        val headerSize = 30 + nameBytes.size
+                        val paddingNeeded = (4 - (headerSize % 4)) % 4
+                        if (paddingNeeded > 0) {
+                            newEntry.extra = ByteArray(paddingNeeded)
+                        }
+                    }
+
+                    destination.putNextEntry(newEntry)
+                    destination.write(entryData)
                     destination.closeEntry()
                 }
             }

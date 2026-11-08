@@ -12,7 +12,7 @@ import rikka.shizuku.Shizuku
 import java.io.File
 import java.util.zip.ZipFile
 
-data class GameInfo(val packageName: String, val versionName: String, val sourceApk: String)
+data class GameInfo(val packageName: String, val versionName: String, val sourceApks: List<String>)
 data class InstalledMod(
     val id: String,
     val name: String,
@@ -59,11 +59,12 @@ class LoaderRepository(val context: Context) {
         return packages.firstNotNullOfOrNull { name ->
             try {
                 val info = packageManager.getPackageInfo(name, 0)
-                val apk = runShell("pm path $name").lineSequence()
-                    .firstOrNull { it.startsWith("package:") }
-                    ?.removePrefix("package:")
-                    ?: return@firstNotNullOfOrNull null
-                GameInfo(name, info.versionName ?: "unknown", apk)
+                val apks = runShell("pm path $name").lineSequence()
+                    .filter { it.startsWith("package:") }
+                    .map { it.removePrefix("package:") }
+                    .toList()
+                if (apks.isEmpty()) return@firstNotNullOfOrNull null
+                GameInfo(name, info.versionName ?: "unknown", apks)
             } catch (_: Exception) {
                 null
             }
@@ -80,26 +81,55 @@ class LoaderRepository(val context: Context) {
             try {
                 val sourceGame = detectSourceGame() ?: error("Unable to locate the official Sobosuba APK")
                 val installPackage = if (separateInstallEnabled()) DEBUG_PACKAGE else sourceGame.packageName
-                val localApk = File.createTempFile("sobosuba-base-", ".apk", context.cacheDir)
-                writeShellFileToLocal(sourceGame.sourceApk, localApk)
+
+                // Pull ALL APK splits to local temp files
+                val localApks = sourceGame.sourceApks.mapIndexed { index, remotePath ->
+                    val local = File.createTempFile("sobosuba-$index-", ".apk", context.cacheDir)
+                    writeShellFileToLocal(remotePath, local)
+                    local
+                }
+
+                // Patch ONLY base.apk (first one — it contains AndroidManifest.xml)
+                val baseApk = localApks.first()
                 val unsignedPatched = File(context.cacheDir, "sobosuba-patched-unsigned.apk")
-                val patched = File(context.cacheDir, "sobosuba-patched.apk")
+                val patchedBase = File(context.cacheDir, "sobosuba-patched.apk")
                 AxmlManifestPatcher.patchApk(
-                    localApk,
+                    baseApk,
                     unsignedPatched,
                     AxmlManifestPatcher.Options(
                         packageName = installPackage.takeIf { it != sourceGame.packageName },
                         appLabel = "Sobosuba (Modded)"
                     )
                 )
-                ApkSignerUtil.sign(context, unsignedPatched, patched)
-                val remote = "/data/local/tmp/${patched.name}"
-                pushLocalFile(patched, remote)
-                val install = runShell("pm install -r $remote")
-                runShell("rm -f $remote")
-                localApk.delete()
+                ApkSignerUtil.sign(context, unsignedPatched, patchedBase)
+
+                // Push ALL APKs to /data/local/tmp/ (patched base + unpatched splits)
+                val remotePaths = mutableListOf<String>()
+                // Push patched base
+                val remoteBase = "/data/local/tmp/${patchedBase.name}"
+                pushLocalFile(patchedBase, remoteBase)
+                remotePaths.add(remoteBase)
+
+                // Push unpatched splits (re-sign them too, since the base signature changed)
+                localApks.drop(1).forEachIndexed { index, split ->
+                    val signedSplit = File(context.cacheDir, "sobosuba-split-$index-signed.apk")
+                    ApkSignerUtil.sign(context, split, signedSplit)
+                    val remoteSplit = "/data/local/tmp/${signedSplit.name}"
+                    pushLocalFile(signedSplit, remoteSplit)
+                    remotePaths.add(remoteSplit)
+                    signedSplit.delete()
+                }
+
+                // Install ALL APKs together with one pm install command
+                val installCommand = "pm install -r -t ${remotePaths.joinToString(" ")}"
+                val install = runShell(installCommand)
+
+                // Cleanup
+                remotePaths.forEach { runShell("rm -f $it") }
+                localApks.forEach { it.delete() }
                 unsignedPatched.delete()
-                patched.delete()
+                patchedBase.delete()
+
                 if (!install.contains("Success", ignoreCase = true)) error(install.ifBlank { "Package installation failed" })
                 callback(
                     if (installPackage == DEBUG_PACKAGE) {
@@ -118,11 +148,12 @@ class LoaderRepository(val context: Context) {
         packages.drop(1).firstNotNullOfOrNull { name ->
             try {
                 val info = context.packageManager.getPackageInfo(name, 0)
-                val apk = runShell("pm path $name").lineSequence()
-                    .firstOrNull { it.startsWith("package:") }
-                    ?.removePrefix("package:")
-                    ?: return@firstNotNullOfOrNull null
-                GameInfo(name, info.versionName ?: "unknown", apk)
+                val apks = runShell("pm path $name").lineSequence()
+                    .filter { it.startsWith("package:") }
+                    .map { it.removePrefix("package:") }
+                    .toList()
+                if (apks.isEmpty()) return@firstNotNullOfOrNull null
+                GameInfo(name, info.versionName ?: "unknown", apks)
             } catch (_: Exception) {
                 null
             }

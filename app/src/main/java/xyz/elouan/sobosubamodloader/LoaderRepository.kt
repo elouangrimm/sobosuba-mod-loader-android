@@ -22,6 +22,14 @@ data class InstalledMod(
     val files: List<String>
 )
 
+private const val CUSTOM_PACKAGE = "custom_package"
+
+fun customPackage(): String = preferences.getString(CUSTOM_PACKAGE, "") ?: ""
+
+fun setCustomPackage(value: String) {
+    preferences.edit().putString(CUSTOM_PACKAGE, value).apply()
+}
+
 class LoaderRepository(val context: Context) {
     companion object {
         const val SHIZUKU_PERMISSION_REQUEST_CODE = 100
@@ -32,8 +40,12 @@ class LoaderRepository(val context: Context) {
 
     private val scope = CoroutineScope(Dispatchers.IO)
     private val preferences = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
-    private val packages = listOf(DEBUG_PACKAGE, "com.keepeetron.sobosuba", "com.keepeetron.sobosuba.beta")
-
+    private fun packageList(): List<String> {
+        val list = mutableListOf(DEBUG_PACKAGE, "com.keepeetron.sobosuba", "com.keepeetron.sobosuba.beta", "com.keepeetron.sobosuba.morphe")
+        val custom = customPackage()
+        if (custom.isNotBlank()) list.add(0, custom)
+        return list
+    }
     fun separateInstallEnabled(): Boolean = preferences.getBoolean(SEPARATE_INSTALL, false)
 
     fun setSeparateInstallEnabled(enabled: Boolean) {
@@ -56,7 +68,7 @@ class LoaderRepository(val context: Context) {
 
     fun detectGame(): GameInfo? {
         val packageManager = context.packageManager
-        return packages.firstNotNullOfOrNull { name ->
+        return packageList().firstNotNullOfOrNull { name ->
             try {
                 val info = packageManager.getPackageInfo(name, 0)
                 val apks = runShell("pm path $name").lineSequence()
@@ -145,7 +157,7 @@ class LoaderRepository(val context: Context) {
     }
 
     private fun detectSourceGame(): GameInfo? =
-        packages.drop(1).firstNotNullOfOrNull { name ->
+        packageList().firstNotNullOfOrNull { name ->
             try {
                 val info = context.packageManager.getPackageInfo(name, 0)
                 val apks = runShell("pm path $name").lineSequence()

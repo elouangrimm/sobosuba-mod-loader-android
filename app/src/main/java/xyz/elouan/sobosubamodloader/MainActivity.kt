@@ -42,6 +42,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -247,6 +248,8 @@ private fun ModsScreen(
 
 @androidx.compose.runtime.Composable
 private fun SettingsScreen(model: LoaderViewModel, padding: PaddingValues) {
+    var customPackageText by remember { mutableStateOf(model.customPackage) }
+
     Column(
         Modifier.fillMaxSize().padding(padding).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -265,6 +268,21 @@ private fun SettingsScreen(model: LoaderViewModel, padding: PaddingValues) {
                 onCheckedChange = model::updateSeparateInstall
             )
         }
+        Text("Custom package name", fontWeight = FontWeight.Bold)
+        Text("Enter a package name if your patched game uses a different one (e.g. com.keepeetron.sobosuba.morphe).")
+        OutlinedTextField(
+            value = customPackageText,
+            onValueChange = { customPackageText = it },
+            label = { Text("Package name") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true
+        )
+        Button(onClick = {
+            model.updateCustomPackage(customPackageText)
+        }) {
+            Text("Save package name")
+        }
+
         Text(
             "This app patches your installed APK and copies mod files into the game's private user data using Shizuku."
         )
@@ -303,6 +321,14 @@ class LoaderViewModel(application: Application) : ViewModel() {
         private set
     var separateInstall by mutableStateOf(repository.separateInstallEnabled())
         private set
+    var customPackage by mutableStateOf(repository.customPackage())
+        private set
+
+    fun updateCustomPackage(value: String) {
+        repository.setCustomPackage(value)
+        customPackage = value
+        refresh()
+    }
 
     fun refresh() {
         loading = true

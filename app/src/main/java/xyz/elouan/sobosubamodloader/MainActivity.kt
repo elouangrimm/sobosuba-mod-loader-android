@@ -248,7 +248,7 @@ private fun ModsScreen(
 
 @androidx.compose.runtime.Composable
 private fun SettingsScreen(model: LoaderViewModel, padding: PaddingValues) {
-    var customPackageText by remember { mutableStateOf(model.customPackage) }
+    var customPackageText by remember(model.customPackage) { mutableStateOf(model.customPackage) }
 
     Column(
         Modifier.fillMaxSize().padding(padding).padding(20.dp),

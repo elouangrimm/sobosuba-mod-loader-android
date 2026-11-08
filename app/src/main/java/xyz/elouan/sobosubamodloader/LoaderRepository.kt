@@ -22,24 +22,24 @@ data class InstalledMod(
     val files: List<String>
 )
 
-private const val CUSTOM_PACKAGE = "custom_package"
-
-fun customPackage(): String = preferences.getString(CUSTOM_PACKAGE, "") ?: ""
-
-fun setCustomPackage(value: String) {
-    preferences.edit().putString(CUSTOM_PACKAGE, value).apply()
-}
-
 class LoaderRepository(val context: Context) {
     companion object {
         const val SHIZUKU_PERMISSION_REQUEST_CODE = 100
         const val DEBUG_PACKAGE = "xyz.elouan.sobosuba.debug"
         private const val PREFERENCES = "loader_preferences"
+        private const val CUSTOM_PACKAGE = "custom_package"
         private const val SEPARATE_INSTALL = "separate_install"
     }
 
     private val scope = CoroutineScope(Dispatchers.IO)
     private val preferences = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+
+    fun customPackage(): String = preferences.getString(CUSTOM_PACKAGE, "") ?: ""
+
+    fun setCustomPackage(value: String) {
+        preferences.edit().putString(CUSTOM_PACKAGE, value).apply()
+    }
+
     private fun packageList(): List<String> {
         val list = mutableListOf(DEBUG_PACKAGE, "com.keepeetron.sobosuba", "com.keepeetron.sobosuba.beta", "com.keepeetron.sobosuba.morphe")
         val custom = customPackage()
